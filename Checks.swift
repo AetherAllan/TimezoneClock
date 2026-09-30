@@ -98,7 +98,14 @@ struct ClockChecks {
         assert(schedule.period(at: beforeDST)?.dark == true)
         assert(schedule.period(at: afterDST)?.dark == false) // Missing 02:30 advances to 03:00
         assert(schedule.period(at: afterDST)?.start == afterDST)
+        schedule.lightMinute = 130
+        schedule.darkMinute = 140
+        assert(schedule.period(at: afterDST)?.dark == true) // Both missing times advance to 03:00
+        schedule.lightMinute = 140
+        schedule.darkMinute = 130
+        assert(schedule.period(at: afterDST)?.dark == false) // Later wall time wins
         schedule.lightMinute = 90
+        schedule.darkMinute = 19 * 60
         let firstRepeated = try instant("2026-11-01T08:30:00Z")
         let secondRepeated = try instant("2026-11-01T09:30:00Z")
         assert(schedule.period(at: firstRepeated)?.start == firstRepeated)

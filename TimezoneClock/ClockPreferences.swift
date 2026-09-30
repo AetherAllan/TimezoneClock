@@ -65,17 +65,20 @@ struct AppearanceSchedule: Codable, Equatable {
         calendar.timeZone = zone
         let today = calendar.startOfDay(for: now)
         guard let yesterday = calendar.date(byAdding: .day, value: -1, to: today) else { return nil }
-        var periods: [AppearancePeriod] = []
+        var periods: [(period: AppearancePeriod, minute: Int)] = []
         for day in [yesterday, today] {
             for (minute, dark) in [(lightMinute, false), (darkMinute, true)] {
                 if let date = calendar.date(bySettingHour: minute / 60, minute: minute % 60, second: 0,
                                            of: day, matchingPolicy: .nextTime, repeatedTimePolicy: .first),
                    date <= now {
-                    periods.append(AppearancePeriod(start: date, dark: dark))
+                    periods.append((AppearancePeriod(start: date, dark: dark), minute))
                 }
             }
         }
-        return periods.max { $0.start < $1.start }
+        // Two missing DST times can both advance to the same instant; the later wall time wins.
+        return periods.max {
+            $0.period.start == $1.period.start ? $0.minute < $1.minute : $0.period.start < $1.period.start
+        }?.period
     }
 }
 

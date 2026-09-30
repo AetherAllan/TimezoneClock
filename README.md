@@ -37,6 +37,7 @@ xcodebuild -project TimezoneClock.xcodeproj -scheme TimezoneClock \
 构建产物位于 `/tmp/TimezoneClockBuild/Build/Products/Release/TimezoneClock.app`。Xcode 工程使用本机运行签名；当前交付用于本机，不包含商店发布、公证或自动更新。
 
 登录启动前请将应用放在稳定的位置，例如 `/Applications/TimezoneClock.app`，并从该位置启动。更新已安装的应用前先从时钟面板退出，替换后再打开。
+本机临时签名随构建变化，更新后 macOS 可能要求重新授予自动化权限。
 
 检查脚本覆盖时间换算、日期与秒数、三种语言资源、时区选择、配置恢复、跨日和冬夏令时调度及手动覆盖。它不代替系统授权、实际重新登录或休眠唤醒验证。
 
