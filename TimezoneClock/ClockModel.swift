@@ -18,37 +18,41 @@ struct ClockZone: Identifiable {
     static let available = TimeZone.knownTimeZoneIdentifiers.compactMap(ClockZone.init)
         .sorted { $0.id < $1.id }
 
-    var name: String {
-        switch id {
-        case "Asia/Shanghai": "北京"
-        case "America/Los_Angeles": "洛杉矶"
-        case "America/New_York": "纽约"
-        case "Europe/London": "伦敦"
-        case "Asia/Tokyo": "东京"
+    func name(language: AppLanguage = .simplifiedChinese) -> String {
+        let key = switch id {
+        case "Asia/Shanghai": "Beijing"
+        case "America/Los_Angeles": "Los Angeles"
+        case "America/New_York": "New York"
+        case "Europe/London": "London"
+        case "Asia/Tokyo": "Tokyo"
         default: (id.split(separator: "/").last.map(String.init) ?? id)
-                .replacingOccurrences(of: "_", with: " ")
+            .replacingOccurrences(of: "_", with: " ")
         }
+        return language.text(key)
     }
 
-    func matches(_ query: String) -> Bool {
+    func matches(_ query: String, language: AppLanguage = .simplifiedChinese) -> Bool {
         let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        let localizedName = timeZone.localizedName(for: .generic, locale: Locale(identifier: "zh_CN")) ?? ""
-        return query.isEmpty || name.localizedStandardContains(query)
+        let localizedName = timeZone.localizedName(for: .generic, locale: language.locale) ?? ""
+        return query.isEmpty || name(language: language).localizedStandardContains(query)
             || id.localizedStandardContains(query)
             || id.replacingOccurrences(of: "_", with: " ").localizedStandardContains(query)
             || localizedName.localizedStandardContains(query)
     }
 
-    func time(at date: Date) -> String {
-        date.formatted(.verbatim(
+    func time(at date: Date, seconds: Bool = false) -> String {
+        let value = date.formatted(.verbatim(
             "\(hour: .twoDigits(clock: .twentyFourHour, hourCycle: .zeroBased)):\(minute: .twoDigits)",
             timeZone: timeZone, calendar: Calendar(identifier: .gregorian)
         ))
+        guard seconds else { return value }
+        return value + ":" + date.formatted(.verbatim("\(second: .twoDigits)",
+            timeZone: timeZone, calendar: Calendar(identifier: .gregorian)))
     }
 
-    func day(at date: Date) -> String {
+    func day(at date: Date, language: AppLanguage = .simplifiedChinese) -> String {
         date.formatted(Date.FormatStyle(
-            locale: Locale(identifier: "zh_CN"),
+            locale: language.locale,
             calendar: Calendar(identifier: .gregorian), timeZone: timeZone
         ).year().month(.twoDigits).day(.twoDigits))
     }
