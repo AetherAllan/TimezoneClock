@@ -29,10 +29,10 @@ struct ClockSettingsView: View {
             Section(store.text("System Appearance Schedule")) {
                 Toggle(store.text("Enable appearance schedule"), isOn: $store.preferences.schedule.enabled)
                 TextField(store.text("Search city or time zone identifier"), text: $query)
-                Picker(store.text("Schedule time zone"), selection: $store.preferences.schedule.timeZoneID) {
-                    ForEach(scheduleZones) { zone in
-                        Text("\(zone.name(language: store.language)) · \(zone.id)").tag(zone.id)
-                    }
+                LabeledContent(store.text("Schedule time zone")) {
+                    ClockZonePicker(zones: scheduleZones, language: store.language,
+                                    selection: $store.preferences.schedule.timeZoneID)
+                        .frame(maxWidth: 360)
                 }
                 timePicker("Switch to Light at", minute: $store.preferences.schedule.lightMinute)
                 timePicker("Switch to Dark at", minute: $store.preferences.schedule.darkMinute)
@@ -97,5 +97,52 @@ struct ClockSettingsView: View {
 
     private func openSystemSettings(_ pane: String) {
         if let url = URL(string: "x-apple.systempreferences:\(pane)") { NSWorkspace.shared.open(url) }
+    }
+}
+
+// A large SwiftUI menu creates a view graph for every item when opened. Native text menu
+// items keep the complete time-zone list without that per-item SwiftUI graph.
+private struct ClockZonePicker: NSViewRepresentable {
+    let zones: [ClockZone]
+    let language: AppLanguage
+    @Binding var selection: String
+
+    func makeCoordinator() -> Coordinator { Coordinator(selection: $selection) }
+
+    func makeNSView(context: Context) -> NSPopUpButton {
+        let button = NSPopUpButton(frame: .zero, pullsDown: false)
+        button.target = context.coordinator
+        button.action = #selector(Coordinator.selectZone(_:))
+        button.autoenablesItems = false
+        button.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        button.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        button.cell?.lineBreakMode = .byTruncatingMiddle
+        return button
+    }
+
+    func updateNSView(_ button: NSPopUpButton, context: Context) {
+        context.coordinator.selection = $selection
+        let titles = zones.map { "\($0.name(language: language)) · \($0.id)" }
+        if button.itemTitles != titles {
+            button.removeAllItems()
+            for (zone, title) in zip(zones, titles) {
+                let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+                item.representedObject = zone.id
+                button.menu?.addItem(item)
+            }
+        }
+        button.selectItem(at: zones.firstIndex { $0.id == selection } ?? -1)
+        button.setAccessibilityLabel(language.text("Schedule time zone"))
+    }
+
+    @MainActor
+    final class Coordinator: NSObject {
+        var selection: Binding<String>
+        init(selection: Binding<String>) { self.selection = selection }
+
+        @objc func selectZone(_ sender: NSPopUpButton) {
+            guard let identifier = sender.selectedItem?.representedObject as? String else { return }
+            selection.wrappedValue = identifier
+        }
     }
 }
