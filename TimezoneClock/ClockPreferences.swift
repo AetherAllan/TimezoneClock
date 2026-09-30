@@ -39,6 +39,12 @@ struct ClockPreferences: Codable, Equatable {
     var showSeconds = false
     var schedule = AppearanceSchedule()
 
+    var refreshInterval: TimeInterval { showSeconds ? 1 : 60 }
+
+    func nextRefresh(after date: Date) -> Date {
+        Date(timeIntervalSince1970: (floor(date.timeIntervalSince1970 / refreshInterval) + 1) * refreshInterval)
+    }
+
     static func load(from data: Data?) -> ClockPreferences {
         guard let data, var value = try? JSONDecoder().decode(Self.self, from: data) else { return Self() }
         if !value.schedule.isValid { value.schedule = AppearanceSchedule() }

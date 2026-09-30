@@ -33,11 +33,12 @@ struct ClockZone: Identifiable {
 
     func matches(_ query: String, language: AppLanguage = .simplifiedChinese) -> Bool {
         let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        let localizedName = timeZone.localizedName(for: .generic, locale: language.locale) ?? ""
-        return query.isEmpty || name(language: language).localizedStandardContains(query)
-            || id.localizedStandardContains(query)
+        guard !query.isEmpty else { return true }
+        if id.localizedStandardContains(query)
             || id.replacingOccurrences(of: "_", with: " ").localizedStandardContains(query)
-            || localizedName.localizedStandardContains(query)
+            || name(language: language).localizedStandardContains(query) { return true }
+        let localizedName = timeZone.localizedName(for: .generic, locale: language.locale) ?? ""
+        return localizedName.localizedStandardContains(query)
     }
 
     func time(at date: Date, seconds: Bool = false) -> String {

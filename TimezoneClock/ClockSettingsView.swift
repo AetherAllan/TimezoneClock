@@ -7,7 +7,8 @@ struct ClockSettingsView: View {
     @State private var query = ""
 
     private var scheduleZones: [ClockZone] {
-        ClockZone.available.filter {
+        guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return ClockZone.available }
+        return ClockZone.available.filter {
             $0.id == store.preferences.schedule.timeZoneID || $0.matches(query, language: store.language)
         }
     }

@@ -25,10 +25,12 @@ final class ClockStore {
                 appearance.configure(preferences.schedule,
                     askPermission: !oldValue.schedule.enabled && preferences.schedule.enabled)
             }
+            if oldValue.showSeconds != preferences.showSeconds { restartClock() }
         }
     }
     let appearance = AppearanceController()
     private var subscriptions = Set<AnyCancellable>()
+    @ObservationIgnored private var clockTimer: AnyCancellable?
 
     init() {
         let defaults = UserDefaults.standard
@@ -38,15 +40,6 @@ final class ClockStore {
             primary: defaults.string(forKey: "primaryTimeZone") ?? "Asia/Shanghai"
         )
 
-        Timer.publish(every: 1, on: .main, in: .common).autoconnect()
-            .sink { [weak self] date in
-                MainActor.assumeIsolated {
-                    self?.now = date
-                    self?.appearance.tick(at: date)
-                }
-            }
-            .store(in: &subscriptions)
-
         // Notifications can arrive off the main thread; deliver UI updates on the main run loop.
         Publishers.Merge(
             NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didWakeNotification),
@@ -55,8 +48,7 @@ final class ClockStore {
         .receive(on: RunLoop.main)
         .sink { [weak self] _ in
             MainActor.assumeIsolated {
-                self?.now = Date()
-                self?.appearance.tick(at: Date(), force: true)
+                self?.restartClock()
             }
         }
         .store(in: &subscriptions)
@@ -66,6 +58,24 @@ final class ClockStore {
             setLaunchAtLogin(true)
         }
         appearance.configure(preferences.schedule)
+        restartClock()
+    }
+
+    private func restartClock() {
+        clockTimer?.cancel()
+        now = Date()
+        appearance.tick(at: now, force: true)
+        let timer = Timer(fire: preferences.nextRefresh(after: now), interval: preferences.refreshInterval,
+                          repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.now = Date()
+                self.appearance.tick(at: self.now)
+            }
+        }
+        timer.tolerance = preferences.showSeconds ? 0.1 : 1
+        clockTimer = AnyCancellable { timer.invalidate() }
+        RunLoop.main.add(timer, forMode: .common)
     }
 
     var language: AppLanguage { preferences.language }
@@ -120,11 +130,7 @@ struct TimezoneClockApp: App {
 struct ClockPanel: View {
     @Bindable var store: ClockStore
     @State private var isAdding = false
-    @State private var query = ""
-    @FocusState private var searchFocused: Bool
     @Environment(\.openSettings) private var openSettings
-
-    private var results: [ClockZone] { ClockZone.available.filter { $0.matches(query, language: store.language) } }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -134,8 +140,6 @@ struct ClockPanel: View {
                 Spacer()
                 Button {
                     isAdding.toggle()
-                    query = ""
-                    searchFocused = isAdding
                 } label: {
                     Image(systemName: isAdding ? "xmark" : "plus")
                 }
@@ -155,42 +159,7 @@ struct ClockPanel: View {
 
             if isAdding {
                 Divider()
-                TextField(store.text("Search city or time zone identifier"), text: $query)
-                    .textFieldStyle(.roundedBorder)
-                    .focused($searchFocused)
-                    .accessibilityLabel(store.text("Search Time Zones"))
-
-                if results.isEmpty {
-                    Text(store.text("No matching time zones"))
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, minHeight: 60)
-                } else {
-                    ScrollView {
-                        LazyVStack(spacing: 4) {
-                            ForEach(results) { zone in
-                                let isSelected = store.selection.identifiers.contains(zone.id)
-                                Button {
-                                    store.selection.add(zone.id)
-                                } label: {
-                                    HStack {
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text(zone.name(language: store.language))
-                                            Text(zone.id).font(.caption).foregroundStyle(.secondary)
-                                        }
-                                        Spacer()
-                                        Image(systemName: isSelected ? "checkmark" : "plus.circle")
-                                    }
-                                    .padding(6)
-                                    .contentShape(Rectangle())
-                                }
-                                .buttonStyle(.plain)
-                                .disabled(isSelected)
-                                .accessibilityLabel("\(zone.name(language: store.language)), \(store.text(isSelected ? "Already Added" : "Add Time Zone")), \(zone.id)")
-                            }
-                        }
-                    }
-                    .frame(height: min(CGFloat(results.count) * 50, 180))
-                }
+                ClockZoneSearch(store: store)
             }
 
             Divider()
@@ -275,5 +244,55 @@ struct ClockPanel: View {
             .help(store.text("Remove Time Zone"))
             .accessibilityLabel("\(store.text("Remove Time Zone")) \(zone.name(language: store.language))")
         }
+    }
+}
+
+private struct ClockZoneSearch: View {
+    @Bindable var store: ClockStore
+    @State private var query = ""
+    @FocusState private var searchFocused: Bool
+
+    var body: some View {
+        let results = query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? ClockZone.available : ClockZone.available.filter { $0.matches(query, language: store.language) }
+        VStack(alignment: .leading, spacing: 12) {
+            TextField(store.text("Search city or time zone identifier"), text: $query)
+                .textFieldStyle(.roundedBorder)
+                .focused($searchFocused)
+                .accessibilityLabel(store.text("Search Time Zones"))
+
+            if results.isEmpty {
+                Text(store.text("No matching time zones"))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, minHeight: 60)
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 4) {
+                        ForEach(results) { zone in
+                            let isSelected = store.selection.identifiers.contains(zone.id)
+                            Button {
+                                store.selection.add(zone.id)
+                            } label: {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(zone.name(language: store.language))
+                                        Text(zone.id).font(.caption).foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
+                                    Image(systemName: isSelected ? "checkmark" : "plus.circle")
+                                }
+                                .padding(6)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(isSelected)
+                            .accessibilityLabel("\(zone.name(language: store.language)), \(store.text(isSelected ? "Already Added" : "Add Time Zone")), \(zone.id)")
+                        }
+                    }
+                }
+                .frame(height: min(CGFloat(results.count) * 50, 180))
+            }
+        }
+        .onAppear { searchFocused = true }
     }
 }

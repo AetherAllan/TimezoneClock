@@ -2,6 +2,7 @@ import Foundation
 
 @main
 struct ClockChecks {
+    @MainActor
     static func main() throws {
         let iso = ISO8601DateFormatter()
         func instant(_ value: String) throws -> Date {
@@ -137,7 +138,47 @@ struct ClockChecks {
         assert(ClockPreferences.load(from: invalid).schedule == AppearanceSchedule())
         assert(ClockPreferences.load(from: Data("invalid".utf8)) == ClockPreferences())
 
-        print("PASS: 时间换算、日期秒数、三种语言资源、选择规则、跨日与夏令时调度、手动覆盖、配置恢复")
+        preferences = ClockPreferences()
+        let betweenMinutes = winter.addingTimeInterval(12.5)
+        let nextMinute = try instant("2026-01-15T00:01:00Z")
+        assert(preferences.refreshInterval == 60)
+        assert(preferences.nextRefresh(after: betweenMinutes) == nextMinute)
+        assert(preferences.nextRefresh(after: winter) == nextMinute)
+        preferences.showSeconds = true
+        let nextSecond = try instant("2026-01-15T00:00:13Z")
+        assert(preferences.refreshInterval == 1)
+        assert(preferences.nextRefresh(after: betweenMinutes) == nextSecond)
+        assert(preferences.nextRefresh(after: winter) == winter.addingTimeInterval(1))
+        assert(beijing.matches("  ") && beijing.matches(" Shanghai "))
+
+        // Run the real ClockStore in an isolated test bundle; never touch installed app settings.
+        guard Bundle.main.bundleIdentifier == "dev.local.TimezoneClock.Checks" else {
+            throw CheckError.invalidResources
+        }
+        let defaults = UserDefaults.standard
+        let testDomain = "dev.local.TimezoneClock.Checks"
+        defaults.removePersistentDomain(forName: testDomain)
+        defaults.set(true, forKey: "didInitializeLoginItem")
+        defer { defaults.removePersistentDomain(forName: testDomain) }
+        let store = ClockStore()
+        func checkMinuteTimer() {
+            let next = store.preferences.nextRefresh(after: Date())
+            if next.timeIntervalSinceNow < 3 {
+                RunLoop.main.run(until: next.addingTimeInterval(1.5))
+            }
+            let before = store.now
+            RunLoop.main.run(until: Date().addingTimeInterval(2.2))
+            assert(store.now == before, "Seconds-off mode must not keep a per-second timer")
+        }
+        checkMinuteTimer()
+        store.preferences.showSeconds = true
+        let secondsStart = store.now
+        RunLoop.main.run(until: Date().addingTimeInterval(2.2))
+        assert(store.now > secondsStart, "Seconds-on mode must actually update")
+        store.preferences.showSeconds = false
+        checkMinuteTimer() // Old per-second timer must be cancelled when switching back.
+
+        print("PASS: 时间换算、语言资源、选择与配置恢复、夏令时调度、手动覆盖、刷新对齐和真实定时器切换")
     }
 
     enum CheckError: Error { case invalidDate, invalidZone, invalidResources }
