@@ -157,34 +157,34 @@ struct ClockPanel: View {
     }
 
     private var panelContent: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Label(store.text("World Clock"), systemImage: "globe")
-                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
                 Spacer()
                 Button {
                     isAdding.toggle()
                 } label: {
                     Image(systemName: isAdding ? "xmark" : "plus")
-                        .font(.system(size: 12, weight: .semibold))
-                        .frame(width: 24, height: 24)
+                        .font(.system(size: 11, weight: .semibold))
+                        .frame(width: 22, height: 22)
                 }
                 .modifier(ClockActionStyle(style: store.preferences.interfaceStyle))
                 .buttonBorderShape(.circle)
                 .help(store.text(isAdding ? "Close Search" : "Add Time Zone"))
                 .accessibilityLabel(store.text(isAdding ? "Close Search" : "Add Time Zone"))
             }
-            .padding(.horizontal, 4)
+            .padding(.horizontal, 2)
 
             ScrollView {
-                LazyVStack(spacing: 10) {
+                LazyVStack(spacing: 8) {
                     ForEach(store.selection.zones) { zone in
                         ClockZoneRow(zone: zone, store: store)
                     }
                 }
                 .padding(.horizontal, 1)
             }
-            .frame(height: min(CGFloat(store.selection.identifiers.count) * 92, isAdding ? 220 : 440))
+            .frame(height: min(CGFloat(store.selection.identifiers.count) * 64, isAdding ? 154 : 308))
 
             if isAdding {
                 Divider()
@@ -192,13 +192,13 @@ struct ClockPanel: View {
             }
 
             Divider().opacity(0.4)
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 Toggle(store.text("Launch at Login"), isOn: Binding(
                     get: { store.launchesAtLogin }, set: { store.setLaunchAtLogin($0) }
                 ))
                 .toggleStyle(.switch)
                 .controlSize(.mini)
-                .font(.system(size: 12, weight: .medium))
+                .font(.system(size: 11, weight: .medium))
                 Spacer()
                 Button {
                     store.dismissMenuPanel()
@@ -206,8 +206,8 @@ struct ClockPanel: View {
                     openSettings()
                 } label: {
                     Image(systemName: "gearshape")
-                        .font(.system(size: 13, weight: .medium))
-                        .frame(width: 24, height: 24)
+                        .font(.system(size: 12, weight: .medium))
+                        .frame(width: 22, height: 22)
                 }
                 .modifier(ClockActionStyle(style: store.preferences.interfaceStyle))
                 .buttonBorderShape(.circle)
@@ -220,7 +220,7 @@ struct ClockPanel: View {
                     .controlSize(.small)
                     .keyboardShortcut("q")
             }
-            .padding(.horizontal, 4)
+            .padding(.horizontal, 2)
             if store.loginStatus == .requiresApproval {
                 Text(store.text("Launch at login needs system approval"))
                     .font(.caption).foregroundStyle(.secondary)
@@ -234,8 +234,8 @@ struct ClockPanel: View {
                     .font(.caption)
             }
         }
-        .padding(16)
-        .frame(width: 400)
+        .padding(11)
+        .frame(width: 280)
     }
 }
 
@@ -268,21 +268,21 @@ private struct ClockZoneRow: View {
     @Bindable var store: ClockStore
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             Button {
                 store.selection.pin(zone.id)
             } label: {
-                VStack(alignment: .leading, spacing: 7) {
+                VStack(alignment: .leading, spacing: 4) {
                     HStack {
                         Text(zone.name(language: store.language))
-                            .font(.system(size: 13, weight: .medium)).lineLimit(1)
+                            .font(.system(size: 12, weight: .medium)).lineLimit(1)
                         if store.selection.primary == zone.id {
                             Image(systemName: "pin.fill").font(.caption).foregroundStyle(.tint)
                                 .accessibilityLabel(store.text("Pinned"))
                         }
                         Spacer(minLength: 8)
                         Text(zone.time(at: store.now, seconds: store.preferences.showSeconds))
-                            .font(.system(size: 28, weight: .semibold, design: .rounded))
+                            .font(.system(size: 20, weight: .semibold, design: .rounded))
                             .monospacedDigit()
                             .fixedSize()
                     }
@@ -291,7 +291,7 @@ private struct ClockZoneRow: View {
                         Spacer()
                         Text(zone.offset(at: store.now))
                     }
-                    .font(.system(size: 11)).foregroundStyle(.secondary)
+                    .font(.system(size: 10)).foregroundStyle(.secondary)
                 }
                 .contentShape(Rectangle())
             }
@@ -312,7 +312,7 @@ private struct ClockZoneRow: View {
             .help(store.text("Remove Time Zone"))
             .accessibilityLabel("\(store.text("Remove Time Zone")) \(zone.name(language: store.language))")
         }
-        .padding(14)
+        .padding(8)
         .modifier(ClockCardSurface(style: store.preferences.interfaceStyle,
                                   selected: store.selection.primary == zone.id))
     }
@@ -326,7 +326,7 @@ private struct ClockZoneSearch: View {
     var body: some View {
         let results = query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? ClockZone.available : ClockZone.available.filter { $0.matches(query, language: store.language) }
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 8) {
             TextField(store.text("Search city or time zone identifier"), text: $query)
                 .textFieldStyle(.roundedBorder)
                 .focused($searchFocused)
@@ -335,7 +335,7 @@ private struct ClockZoneSearch: View {
             if results.isEmpty {
                 Text(store.text("No matching time zones"))
                     .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, minHeight: 60)
+                    .frame(maxWidth: .infinity, minHeight: 42)
             } else {
                 ScrollView {
                     LazyVStack(spacing: 4) {
@@ -361,7 +361,7 @@ private struct ClockZoneSearch: View {
                         }
                     }
                 }
-                .frame(height: min(CGFloat(results.count) * 50, 180))
+                .frame(height: min(CGFloat(results.count) * 50, 126))
             }
         }
         .onAppear { searchFocused = true }

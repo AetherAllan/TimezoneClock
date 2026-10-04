@@ -8,7 +8,7 @@ struct ClockPanelSurface<Content: View>: View {
 
     var body: some View {
         if #available(macOS 26, *), style == .liquidGlass, !reduceTransparency {
-            GlassEffectContainer(spacing: 8) {
+            GlassEffectContainer(spacing: 6) {
                 content
             }
             .background(ClockPanelBackdrop())
@@ -39,7 +39,7 @@ struct ClockCardSurface: ViewModifier {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     func body(content: Content) -> some View {
-        let shape = RoundedRectangle(cornerRadius: 20)
+        let shape = RoundedRectangle(cornerRadius: 14)
         if #available(macOS 26, *), style == .liquidGlass, !reduceTransparency {
             content
                 .glassEffect(.clear.tint(selected ? .accentColor.opacity(0.14) : .clear).interactive(), in: shape)
