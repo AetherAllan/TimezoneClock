@@ -5,6 +5,7 @@ import SwiftUI
 struct ClockSettingsView: View {
     @Bindable var store: ClockStore
     @State private var query = ""
+    @Environment(\.colorScheme) private var colorScheme
 
     private var scheduleZones: [ClockZone] {
         guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return ClockZone.available }
@@ -15,6 +16,9 @@ struct ClockSettingsView: View {
 
     var body: some View {
         Form {
+            Section(store.text("Appearance")) {
+                ClockAppearanceView(store: store)
+            }
             Section(store.text("Display")) {
                 Picker(store.text("Language"), selection: $store.preferences.language) {
                     ForEach(AppLanguage.allCases) { language in
@@ -27,34 +31,9 @@ struct ClockSettingsView: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section(store.text("System Appearance Schedule")) {
-                Toggle(store.text("Enable appearance schedule"), isOn: $store.preferences.schedule.enabled)
-                TextField(store.text("Search city or time zone identifier"), text: $query)
-                LabeledContent(store.text("Schedule time zone")) {
-                    ClockZonePicker(zones: scheduleZones, language: store.language,
-                                    selection: $store.preferences.schedule.timeZoneID)
-                        .frame(maxWidth: 360)
-                }
-                timePicker("Switch to Light at", minute: $store.preferences.schedule.lightMinute)
-                timePicker("Switch to Dark at", minute: $store.preferences.schedule.darkMinute)
-                Text(store.appearance.status.text(language: store.language))
-                    .font(.callout).textSelection(.enabled)
-                    .accessibilityIdentifier("appearanceStatus")
-                Text(store.text("Uses the selected time zone, including daylight saving time. Manual changes last until the next transition. Disabling keeps the current appearance."))
-                    .font(.caption).foregroundStyle(.secondary)
-                HStack {
-                    Button(store.text("Check / Request Access")) {
-                        store.appearance.configure(store.preferences.schedule, askPermission: true)
-                    }
-                    .disabled(!store.preferences.schedule.enabled || !store.preferences.schedule.isValid)
-                    Button(store.text("Appearance Settings")) {
-                        openSystemSettings("com.apple.Appearance-Settings.extension")
-                    }
-                    Button(store.text("Automation Settings")) {
-                        openSystemSettings("com.apple.preference.security?Privacy_Automation")
-                    }
-                }
-                .controlSize(.small)
+                scheduleControls
             }
+            .disabled(store.appearance.isBusy)
             Section {
                 Toggle(store.text("Launch at Login"), isOn: Binding(
                     get: { store.launchesAtLogin }, set: { store.setLaunchAtLogin($0) }
@@ -69,15 +48,45 @@ struct ClockSettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 560, height: 660)
+        .frame(width: 600, height: 740)
         .onAppear {
             store.refreshLoginStatus()
-            store.appearance.tick(at: Date(), force: true)
+            store.appearance.refreshActualAppearance()
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             store.refreshLoginStatus()
-            store.appearance.tick(at: Date(), force: true)
+            store.appearance.refreshActualAppearance()
         }
+        .onChange(of: colorScheme) { _, _ in store.appearance.refreshActualAppearance() }
+    }
+
+    @ViewBuilder
+    private var scheduleControls: some View {
+        Toggle(store.text("Enable appearance schedule"), isOn: $store.preferences.schedule.enabled)
+        TextField(store.text("Search city or time zone identifier"), text: $query)
+        LabeledContent(store.text("Schedule time zone")) {
+            ClockZonePicker(zones: scheduleZones, language: store.language,
+                            selection: $store.preferences.schedule.timeZoneID)
+                .frame(maxWidth: 360)
+        }
+        timePicker("Switch to Light at", minute: $store.preferences.schedule.lightMinute)
+        timePicker("Switch to Dark at", minute: $store.preferences.schedule.darkMinute)
+        Text(store.appearance.status.text(language: store.language))
+            .font(.callout).textSelection(.enabled)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(store.appearance.status.text(language: store.language))
+            .accessibilityAddTraits(.isStaticText)
+            .accessibilityIdentifier("appearanceStatus")
+        Text(store.text("Uses the selected time zone, including daylight saving time. Manual changes last until the next transition. Disabling keeps the current appearance."))
+            .font(.caption).foregroundStyle(.secondary)
+        HStack {
+            Button(store.text("Check / Request Access")) {
+                store.appearance.configure(store.preferences.schedule, askPermission: true)
+            }
+            .disabled(!store.preferences.schedule.enabled || !store.preferences.schedule.isValid)
+        }
+        .modifier(ClockActionStyle(style: store.preferences.interfaceStyle))
+        .controlSize(.small)
     }
 
     private func timePicker(_ label: String, minute: Binding<Int>) -> some View {
@@ -93,10 +102,6 @@ struct ClockSettingsView: View {
         ), displayedComponents: .hourAndMinute)
         .environment(\.timeZone, .gmt)
         .environment(\.locale, Locale(identifier: "en_GB"))
-    }
-
-    private func openSystemSettings(_ pane: String) {
-        if let url = URL(string: "x-apple.systempreferences:\(pane)") { NSWorkspace.shared.open(url) }
     }
 }
 

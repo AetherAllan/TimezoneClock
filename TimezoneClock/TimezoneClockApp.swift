@@ -115,9 +115,7 @@ struct TimezoneClockApp: App {
         MenuBarExtra {
             ClockPanel(store: store)
         } label: {
-            Text(store.menuLabel)
-                .monospacedDigit()
-                .accessibilityLabel(store.menuLabel)
+            ClockMenuLabel(store: store)
         }
         .menuBarExtraStyle(.window)
         Settings {
@@ -127,57 +125,69 @@ struct TimezoneClockApp: App {
     }
 }
 
+private struct ClockMenuLabel: View {
+    let store: ClockStore
+    var body: some View {
+        let label = store.menuLabel
+        Text(label).monospacedDigit().accessibilityLabel(label)
+    }
+}
+
 struct ClockPanel: View {
     @Bindable var store: ClockStore
     @State private var isAdding = false
     @Environment(\.openSettings) private var openSettings
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Label(store.text("World Clock"), systemImage: "clock")
-                    .font(.headline)
-                Spacer()
-                Button {
-                    isAdding.toggle()
-                } label: {
-                    Image(systemName: isAdding ? "xmark" : "plus")
+        VStack(alignment: .leading, spacing: 14) {
+            ClockGlassBar(style: store.preferences.interfaceStyle) {
+                HStack {
+                    Label(store.text("World Clock"), systemImage: "clock")
+                        .font(.system(size: 17, weight: .semibold, design: .rounded))
+                    Spacer()
+                    Button {
+                        isAdding.toggle()
+                    } label: {
+                        Image(systemName: isAdding ? "xmark" : "plus")
+                    }
+                    .buttonStyle(.borderless)
+                    .help(store.text(isAdding ? "Close Search" : "Add Time Zone"))
+                    .accessibilityLabel(store.text(isAdding ? "Close Search" : "Add Time Zone"))
                 }
-                .buttonStyle(.borderless)
-                .help(store.text(isAdding ? "Close Search" : "Add Time Zone"))
-                .accessibilityLabel(store.text(isAdding ? "Close Search" : "Add Time Zone"))
             }
 
             ScrollView {
-                VStack(spacing: 4) {
+                LazyVStack(spacing: 8) {
                     ForEach(store.selection.zones) { zone in
-                        clockRow(zone)
+                        ClockZoneRow(zone: zone, store: store)
                     }
                 }
+                .padding(.horizontal, 1)
             }
-            .frame(height: min(CGFloat(store.selection.identifiers.count) * 66, 330))
+            .frame(height: min(CGFloat(store.selection.identifiers.count) * 78, isAdding ? 210 : 390))
 
             if isAdding {
                 Divider()
                 ClockZoneSearch(store: store)
             }
 
-            Divider()
-            HStack {
-                Toggle(store.text("Launch at Login"), isOn: Binding(
-                    get: { store.launchesAtLogin }, set: { store.setLaunchAtLogin($0) }
-                ))
-                .toggleStyle(.checkbox)
-                Spacer()
-                Button {
-                    NSApp.activate(ignoringOtherApps: true)
-                    openSettings()
-                } label: { Image(systemName: "gearshape") }
-                .help(store.text("Settings"))
-                .accessibilityLabel(store.text("Settings"))
-                .keyboardShortcut(",")
-                Button(store.text("Quit")) { NSApplication.shared.terminate(nil) }
-                    .keyboardShortcut("q")
+            ClockGlassBar(style: store.preferences.interfaceStyle) {
+                HStack {
+                    Toggle(store.text("Launch at Login"), isOn: Binding(
+                        get: { store.launchesAtLogin }, set: { store.setLaunchAtLogin($0) }
+                    ))
+                    .toggleStyle(.checkbox)
+                    Spacer()
+                    Button {
+                        NSApp.activate(ignoringOtherApps: true)
+                        openSettings()
+                    } label: { Image(systemName: "gearshape") }
+                    .help(store.text("Settings"))
+                    .accessibilityLabel(store.text("Settings"))
+                    .keyboardShortcut(",")
+                    Button(store.text("Quit")) { NSApplication.shared.terminate(nil) }
+                        .keyboardShortcut("q")
+                }
             }
             if store.loginStatus == .requiresApproval {
                 Text(store.text("Launch at login needs system approval"))
@@ -192,8 +202,8 @@ struct ClockPanel: View {
                     .font(.caption)
             }
         }
-        .padding(16)
-        .frame(width: 370)
+        .padding(14)
+        .frame(width: 400)
         .environment(\.locale, store.language.locale)
         .onAppear {
             store.now = Date()
@@ -203,8 +213,15 @@ struct ClockPanel: View {
             store.refreshLoginStatus()
         }
     }
+}
 
-    private func clockRow(_ zone: ClockZone) -> some View {
+private struct ClockZoneRow: View {
+    let zone: ClockZone
+    @Bindable var store: ClockStore
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var contrast
+
+    var body: some View {
         HStack(spacing: 10) {
             Button {
                 store.selection.pin(zone.id)
@@ -214,10 +231,11 @@ struct ClockPanel: View {
                         Text(zone.name(language: store.language)).lineLimit(1)
                         if store.selection.primary == zone.id {
                             Image(systemName: "pin.fill").font(.caption).foregroundStyle(.tint)
+                                .accessibilityLabel(store.text("Pinned"))
                         }
                         Spacer(minLength: 8)
                         Text(zone.time(at: store.now, seconds: store.preferences.showSeconds))
-                            .font(.system(size: 21, weight: .medium, design: .rounded))
+                            .font(.system(size: 24, weight: .semibold, design: .rounded))
                             .monospacedDigit()
                     }
                     HStack {
@@ -227,13 +245,18 @@ struct ClockPanel: View {
                     }
                     .font(.caption).foregroundStyle(.secondary)
                 }
-                .padding(8)
-                .background(store.selection.primary == zone.id ? Color.accentColor.opacity(0.08) : .clear,
-                            in: RoundedRectangle(cornerRadius: 8))
+                .padding(12)
+                .background(Color(nsColor: .controlBackgroundColor).opacity(reduceTransparency ? 1 : 0.65),
+                            in: RoundedRectangle(cornerRadius: 14))
+                .background(store.selection.primary == zone.id ? Color.accentColor.opacity(0.12) : .clear,
+                            in: RoundedRectangle(cornerRadius: 14))
+                .overlay(RoundedRectangle(cornerRadius: 14)
+                    .stroke(store.selection.primary == zone.id ? Color.accentColor.opacity(contrast == .increased ? 0.8 : 0.3) : .primary.opacity(contrast == .increased ? 0.5 : 0.04), lineWidth: 1))
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .help("\(zone.id) · \(store.text("Show in Menu Bar"))")
+            .accessibilityAddTraits(store.selection.primary == zone.id ? .isSelected : [])
             .accessibilityLabel("\(zone.name(language: store.language)), \(zone.day(at: store.now, language: store.language)), \(zone.time(at: store.now, seconds: store.preferences.showSeconds)), \(store.text("Show in Menu Bar"))")
 
             Button { store.selection.remove(zone.id) } label: {

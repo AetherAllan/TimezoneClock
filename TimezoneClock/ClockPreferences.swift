@@ -33,11 +33,34 @@ enum AppLanguage: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+enum InterfaceStyle: String, Codable, CaseIterable, Identifiable {
+    case liquidGlass, standard
+    var id: String { rawValue }
+}
+
 struct ClockPreferences: Codable, Equatable {
     var language: AppLanguage = .simplifiedChinese
     var showDate = false
     var showSeconds = false
+    var interfaceStyle: InterfaceStyle = .liquidGlass
     var schedule = AppearanceSchedule()
+
+    private enum CodingKeys: String, CodingKey {
+        case language, showDate, showSeconds, interfaceStyle, schedule
+    }
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        language = try values.decode(AppLanguage.self, forKey: .language)
+        showDate = try values.decode(Bool.self, forKey: .showDate)
+        showSeconds = try values.decode(Bool.self, forKey: .showSeconds)
+        schedule = try values.decode(AppearanceSchedule.self, forKey: .schedule)
+        // Older versions lack this key; an unrecognized style must not reset other preferences.
+        let style = try values.decodeIfPresent(String.self, forKey: .interfaceStyle)
+        interfaceStyle = style.flatMap(InterfaceStyle.init(rawValue:)) ?? .liquidGlass
+    }
 
     var refreshInterval: TimeInterval { showSeconds ? 1 : 60 }
 
@@ -96,6 +119,12 @@ struct AppearancePeriod: Equatable {
 struct AppearanceRun {
     private(set) var period: AppearancePeriod?
     private(set) var manuallyOverridden = false
+
+    // Use the period at successful completion, since permission requests can cross a boundary.
+    mutating func recordManualOverride(_ period: AppearancePeriod) {
+        self.period = period
+        manuallyOverridden = true
+    }
 
     mutating func shouldApply(_ next: AppearancePeriod, actualDark: Bool) -> Bool {
         if period != next {
