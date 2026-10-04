@@ -31,6 +31,7 @@ final class ClockStore {
     let appearance = AppearanceController()
     private var subscriptions = Set<AnyCancellable>()
     @ObservationIgnored private var clockTimer: AnyCancellable?
+    @ObservationIgnored weak var menuPanelWindow: NSWindow?
 
     init() {
         let defaults = UserDefaults.standard
@@ -91,6 +92,8 @@ final class ClockStore {
 
     func refreshLoginStatus() { loginStatus = SMAppService.mainApp.status }
 
+    func dismissMenuPanel() { menuPanelWindow?.close() }
+
     func setLaunchAtLogin(_ enabled: Bool) {
         loginError = nil
         refreshLoginStatus()
@@ -139,56 +142,85 @@ struct ClockPanel: View {
     @Environment(\.openSettings) private var openSettings
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            ClockGlassBar(style: store.preferences.interfaceStyle) {
-                HStack {
-                    Label(store.text("World Clock"), systemImage: "clock")
-                        .font(.system(size: 17, weight: .semibold, design: .rounded))
-                    Spacer()
-                    Button {
-                        isAdding.toggle()
-                    } label: {
-                        Image(systemName: isAdding ? "xmark" : "plus")
-                    }
-                    .buttonStyle(.borderless)
-                    .help(store.text(isAdding ? "Close Search" : "Add Time Zone"))
-                    .accessibilityLabel(store.text(isAdding ? "Close Search" : "Add Time Zone"))
+        ClockPanelSurface(style: store.preferences.interfaceStyle) {
+            panelContent
+        }
+        .background(ClockPanelWindowReader(store: store).allowsHitTesting(false))
+        .environment(\.locale, store.language.locale)
+        .onAppear {
+            store.now = Date()
+            store.refreshLoginStatus()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            store.refreshLoginStatus()
+        }
+    }
+
+    private var panelContent: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label(store.text("World Clock"), systemImage: "globe")
+                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+                Spacer()
+                Button {
+                    isAdding.toggle()
+                } label: {
+                    Image(systemName: isAdding ? "xmark" : "plus")
+                        .font(.system(size: 12, weight: .semibold))
+                        .frame(width: 24, height: 24)
                 }
+                .modifier(ClockActionStyle(style: store.preferences.interfaceStyle))
+                .buttonBorderShape(.circle)
+                .help(store.text(isAdding ? "Close Search" : "Add Time Zone"))
+                .accessibilityLabel(store.text(isAdding ? "Close Search" : "Add Time Zone"))
             }
+            .padding(.horizontal, 4)
 
             ScrollView {
-                LazyVStack(spacing: 8) {
+                LazyVStack(spacing: 10) {
                     ForEach(store.selection.zones) { zone in
                         ClockZoneRow(zone: zone, store: store)
                     }
                 }
                 .padding(.horizontal, 1)
             }
-            .frame(height: min(CGFloat(store.selection.identifiers.count) * 78, isAdding ? 210 : 390))
+            .frame(height: min(CGFloat(store.selection.identifiers.count) * 92, isAdding ? 220 : 440))
 
             if isAdding {
                 Divider()
                 ClockZoneSearch(store: store)
             }
 
-            ClockGlassBar(style: store.preferences.interfaceStyle) {
-                HStack {
-                    Toggle(store.text("Launch at Login"), isOn: Binding(
-                        get: { store.launchesAtLogin }, set: { store.setLaunchAtLogin($0) }
-                    ))
-                    .toggleStyle(.checkbox)
-                    Spacer()
-                    Button {
-                        NSApp.activate(ignoringOtherApps: true)
-                        openSettings()
-                    } label: { Image(systemName: "gearshape") }
-                    .help(store.text("Settings"))
-                    .accessibilityLabel(store.text("Settings"))
-                    .keyboardShortcut(",")
-                    Button(store.text("Quit")) { NSApplication.shared.terminate(nil) }
-                        .keyboardShortcut("q")
+            Divider().opacity(0.4)
+            HStack(spacing: 10) {
+                Toggle(store.text("Launch at Login"), isOn: Binding(
+                    get: { store.launchesAtLogin }, set: { store.setLaunchAtLogin($0) }
+                ))
+                .toggleStyle(.switch)
+                .controlSize(.mini)
+                .font(.system(size: 12, weight: .medium))
+                Spacer()
+                Button {
+                    store.dismissMenuPanel()
+                    NSApp.activate(ignoringOtherApps: true)
+                    openSettings()
+                } label: {
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 13, weight: .medium))
+                        .frame(width: 24, height: 24)
                 }
+                .modifier(ClockActionStyle(style: store.preferences.interfaceStyle))
+                .buttonBorderShape(.circle)
+                .help(store.text("Settings"))
+                .accessibilityLabel(store.text("Settings"))
+                .keyboardShortcut(",")
+                Button(store.text("Quit")) { NSApplication.shared.terminate(nil) }
+                    .modifier(ClockActionStyle(style: store.preferences.interfaceStyle))
+                    .buttonBorderShape(.capsule)
+                    .controlSize(.small)
+                    .keyboardShortcut("q")
             }
+            .padding(.horizontal, 4)
             if store.loginStatus == .requiresApproval {
                 Text(store.text("Launch at login needs system approval"))
                     .font(.caption).foregroundStyle(.secondary)
@@ -202,15 +234,31 @@ struct ClockPanel: View {
                     .font(.caption)
             }
         }
-        .padding(14)
+        .padding(16)
         .frame(width: 400)
-        .environment(\.locale, store.language.locale)
-        .onAppear {
-            store.now = Date()
-            store.refreshLoginStatus()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            store.refreshLoginStatus()
+    }
+}
+
+// Capture this popup's window so opening settings never closes another app window.
+private struct ClockPanelWindowReader: NSViewRepresentable {
+    let store: ClockStore
+
+    func makeNSView(context: Context) -> WindowView {
+        let view = WindowView(frame: .zero)
+        view.store = store
+        return view
+    }
+
+    func updateNSView(_ view: WindowView, context: Context) {
+        store.menuPanelWindow = view.window
+    }
+
+    final class WindowView: NSView {
+        weak var store: ClockStore?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            store?.menuPanelWindow = window
         }
     }
 }
@@ -218,40 +266,33 @@ struct ClockPanel: View {
 private struct ClockZoneRow: View {
     let zone: ClockZone
     @Bindable var store: ClockStore
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @Environment(\.colorSchemeContrast) private var contrast
 
     var body: some View {
         HStack(spacing: 10) {
             Button {
                 store.selection.pin(zone.id)
             } label: {
-                VStack(alignment: .leading, spacing: 5) {
+                VStack(alignment: .leading, spacing: 7) {
                     HStack {
-                        Text(zone.name(language: store.language)).lineLimit(1)
+                        Text(zone.name(language: store.language))
+                            .font(.system(size: 13, weight: .medium)).lineLimit(1)
                         if store.selection.primary == zone.id {
                             Image(systemName: "pin.fill").font(.caption).foregroundStyle(.tint)
                                 .accessibilityLabel(store.text("Pinned"))
                         }
                         Spacer(minLength: 8)
                         Text(zone.time(at: store.now, seconds: store.preferences.showSeconds))
-                            .font(.system(size: 24, weight: .semibold, design: .rounded))
+                            .font(.system(size: 28, weight: .semibold, design: .rounded))
                             .monospacedDigit()
+                            .fixedSize()
                     }
                     HStack {
                         Text(zone.day(at: store.now, language: store.language))
                         Spacer()
                         Text(zone.offset(at: store.now))
                     }
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
                 }
-                .padding(12)
-                .background(Color(nsColor: .controlBackgroundColor).opacity(reduceTransparency ? 1 : 0.65),
-                            in: RoundedRectangle(cornerRadius: 14))
-                .background(store.selection.primary == zone.id ? Color.accentColor.opacity(0.12) : .clear,
-                            in: RoundedRectangle(cornerRadius: 14))
-                .overlay(RoundedRectangle(cornerRadius: 14)
-                    .stroke(store.selection.primary == zone.id ? Color.accentColor.opacity(contrast == .increased ? 0.8 : 0.3) : .primary.opacity(contrast == .increased ? 0.5 : 0.04), lineWidth: 1))
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -260,13 +301,20 @@ private struct ClockZoneRow: View {
             .accessibilityLabel("\(zone.name(language: store.language)), \(zone.day(at: store.now, language: store.language)), \(zone.time(at: store.now, seconds: store.preferences.showSeconds)), \(store.text("Show in Menu Bar"))")
 
             Button { store.selection.remove(zone.id) } label: {
-                Image(systemName: "minus.circle").foregroundStyle(.secondary)
+                Image(systemName: "minus")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 22, height: 22)
+                    .background(.primary.opacity(0.06), in: Circle())
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.plain)
             .disabled(store.selection.identifiers.count == 1)
             .help(store.text("Remove Time Zone"))
             .accessibilityLabel("\(store.text("Remove Time Zone")) \(zone.name(language: store.language))")
         }
+        .padding(14)
+        .modifier(ClockCardSurface(style: store.preferences.interfaceStyle,
+                                  selected: store.selection.primary == zone.id))
     }
 }
 

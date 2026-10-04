@@ -50,6 +50,7 @@ struct ClockSettingsView: View {
         .formStyle(.grouped)
         .frame(width: 600, height: 740)
         .onAppear {
+            store.dismissMenuPanel()
             store.refreshLoginStatus()
             store.appearance.refreshActualAppearance()
         }

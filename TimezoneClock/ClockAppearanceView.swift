@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-struct ClockGlassBar<Content: View>: View {
+struct ClockPanelSurface<Content: View>: View {
     let style: InterfaceStyle
     @ViewBuilder let content: Content
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
@@ -9,17 +9,52 @@ struct ClockGlassBar<Content: View>: View {
     var body: some View {
         if #available(macOS 26, *), style == .liquidGlass, !reduceTransparency {
             GlassEffectContainer(spacing: 8) {
-                paddedContent.glassEffect(.regular, in: RoundedRectangle(cornerRadius: 18))
+                content
             }
+            .background(ClockPanelBackdrop())
         } else {
-            paddedContent
-                .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 18))
-                .overlay(RoundedRectangle(cornerRadius: 18).stroke(.primary.opacity(0.06), lineWidth: 1))
+            content
         }
     }
+}
 
-    private var paddedContent: some View {
-        content.padding(.horizontal, 12).padding(.vertical, 10)
+// Sample behind the popup window rather than the menu's pale default backdrop.
+private struct ClockPanelBackdrop: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = .underWindowBackground
+        view.blendingMode = .behindWindow
+        view.state = .active
+        return view
+    }
+
+    func updateNSView(_ view: NSVisualEffectView, context: Context) {}
+}
+
+struct ClockCardSurface: ViewModifier {
+    let style: InterfaceStyle
+    let selected: Bool
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 20)
+        if #available(macOS 26, *), style == .liquidGlass, !reduceTransparency {
+            content
+                .glassEffect(.clear.tint(selected ? .accentColor.opacity(0.14) : .clear).interactive(), in: shape)
+                .background(colorScheme == .dark ? Color.black.opacity(0.18) : Color.white.opacity(0.16), in: shape)
+                .overlay(shape.strokeBorder(
+                    selected ? Color.accentColor.opacity(contrast == .increased ? 0.8 : 0.35)
+                             : Color.primary.opacity(contrast == .increased ? 0.45 : 0.07), lineWidth: 1))
+        } else {
+            content
+                .background(selected ? Color.accentColor.opacity(0.1) : .clear, in: shape)
+                .background(Color(nsColor: .controlBackgroundColor), in: shape)
+                .overlay(shape.strokeBorder(
+                    selected ? Color.accentColor.opacity(contrast == .increased ? 0.8 : 0.3)
+                             : Color.primary.opacity(contrast == .increased ? 0.45 : 0.06), lineWidth: 1))
+        }
     }
 }
 
